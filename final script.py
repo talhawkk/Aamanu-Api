@@ -57,12 +57,12 @@
 
 
 from flask import Flask, request, jsonify
-import requests
+import requests, os
 
 app = Flask(__name__)
 
-API_KEY = "AIzaSyCgr04v36qJDCLpmpuTBDgAgQuHOqmnEOQ"
-SEARCH_ENGINE_ID = "715bfed6b2f6a407f"
+API_KEY = os.getenv("API_KEY")
+SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
 FIRQA_SITES = {
     "barelvi": "site:thefatwa.com OR site:daruliftaahlesunnat.net OR site:daruliftabareilly.com",
