@@ -74,7 +74,8 @@ SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 # Define websites for different sects
 FIRQA_SITES = {
     "barelvi": "site:thefatwa.com OR site:daruliftaahlesunnat.net OR site:daruliftabareilly.com",
-    "deobandi": "site:darulifta-deoband.com OR site:banuri.edu.pk OR site:darulifta-deoband.com/en",
+    "deobandi": "site:banuri.edu.pk",  # Primary site for Deobandi
+    "deobandi_fallback": "site:darulifta-deoband.com OR site:darulifta-deoband.com/en",  # Fallback sites
     "ahlehadith": "site:ahlelhadith.com OR site:forum.mohaddis.com",
 }
 
@@ -88,7 +89,7 @@ def search_google(query, firqa_sites=""):
         "q": f"{query} {firqa_sites}" if firqa_sites else query,
         "key": API_KEY,
         "cx": SEARCH_ENGINE_ID,
-        "num": 6,
+        "num": 6,  # Max 6 results per request
     }
     
     try:
@@ -108,18 +109,28 @@ def search():
     if not query:
         return jsonify({"error": "Query is required"}), 400
 
-    if firqa and firqa not in FIRQA_SITES:
+    if firqa and firqa not in ["barelvi", "deobandi", "ahlehadith"]:
         return jsonify({"error": "Invalid sect specified"}), 400
 
     results = {}
-    if firqa in FIRQA_SITES:
+    if firqa == "deobandi":
+        # Step 1: Pehle Banuri se search karo
+        banuri_results = search_google(query, FIRQA_SITES["deobandi"])
+        results["deobandi"] = banuri_results
+        
+        # Step 2: Agar Banuri se 2 se kam results milen, to fallback sites se search
+        if isinstance(banuri_results, list) and len(banuri_results) < 2:
+            fallback_results = search_google(query, FIRQA_SITES["deobandi_fallback"])
+            if isinstance(fallback_results, list):
+                results["deobandi"] = banuri_results + fallback_results[:6 - len(banuri_results)]  # Max 6 results
+    elif firqa in FIRQA_SITES:
         results[firqa] = search_google(query, FIRQA_SITES[firqa])
     else:
-        combined_sites = " OR ".join(FIRQA_SITES.values())
+        combined_sites = " OR ".join([FIRQA_SITES["barelvi"], FIRQA_SITES["deobandi"], FIRQA_SITES["ahlehadith"]])
         results["all"] = search_google(query, combined_sites)
     
     return jsonify(results), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)  # No debug in production
+    app.run(host="0.0.0.0", port=port)
