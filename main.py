@@ -15,35 +15,38 @@ SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
 # Define websites for different sects
 FIRQA_SITES = {
-    "barelvi": "site:thefatwa.com OR site:daruliftaahlesunnat.net OR site:daruliftabareilly.com",
-    "deobandi": "site:banuri.edu.pk",  # Primary site for Deobandi
-    "deobandi_fallback": "site:darulifta-deoband.com OR site:darulifta-deoband.com/en",  # Fallback sites
+    "barelvi": "site:thefatwa.com",
+    "barelvi_fallback": "site:daruliftaahlesunnat.net OR site:daruliftabareilly.com",
+    "deobandi": "site:banuri.edu.pk",  
+    "deobandi_fallback": "site:darulifta-deoband.com OR site:darulifta-deoband.com/en",  
     "ahlehadith": "site:ahlelhadith.com OR site:forum.mohaddis.com",
 }
 
-def search_google(query, firqa_sites=""):
-    """Search Google Custom Search API."""
+def search_google(query, firqa_sites="", start=1):
+    """Search Google Custom Search API with pagination support."""
     if not API_KEY or not SEARCH_ENGINE_ID:
-        return {"error": "API configuration is missing"}
+        return {"error": "API configuration is missing"}, 400
     
     base_url = "https://www.googleapis.com/customsearch/v1"
     params = {
         "q": f"{query} {firqa_sites}" if firqa_sites else query,
         "key": API_KEY,
         "cx": SEARCH_ENGINE_ID,
+        "start": start,  # Pagination starting point
     }
     
     try:
         response = requests.get(base_url, params=params)
         response.raise_for_status()
-        return response.json().get("items", [])
+        data = response.json()
+        return data.get("items", []), 200
     except requests.exceptions.RequestException as e:
         logger.error(f"Search failed: {str(e)}")
-        return {"error": str(e)}
+        return {"error": str(e)}, 500
 
 @app.route("/search", methods=["GET"])
 def search():
-    """Handle search queries with optional sect filter."""
+    """Handle search queries with optional sect filter and fallback logic."""
     query = request.args.get("query", "").strip()
     firqa = request.args.get("firqa", "").strip().lower()
 
@@ -54,21 +57,40 @@ def search():
         return jsonify({"error": "Invalid sect specified"}), 400
 
     results = {}
-    if firqa == "deobandi":
-        # Step 1: Pehle Banuri se search karo
-        banuri_results = search_google(query, FIRQA_SITES["deobandi"])
-        results["deobandi"] = banuri_results
-        
-        # Step 2: Agar Banuri se 2 se kam results milen, to fallback sites se search
-        if isinstance(banuri_results, list) and len(banuri_results) < 2:
-            fallback_results = search_google(query, FIRQA_SITES["deobandi_fallback"])
-            if isinstance(fallback_results, list):
-                results["deobandi"] = banuri_results + fallback_results  # All available results
-    elif firqa in FIRQA_SITES:
-        results[firqa] = search_google(query, FIRQA_SITES[firqa])
+    if firqa in ["deobandi", "barelvi", "ahlehadith"]:
+        if firqa == "deobandi":
+            banuri_results, status = search_google(query, FIRQA_SITES["deobandi"])
+            if status != 200:
+                return jsonify(banuri_results), status
+            results["deobandi"] = banuri_results
+            if isinstance(banuri_results, list) and len(banuri_results) < 2:
+                fallback_results, fallback_status = search_google(query, FIRQA_SITES["deobandi_fallback"])
+                if fallback_status != 200:
+                    return jsonify(fallback_results), fallback_status
+                if isinstance(fallback_results, list):
+                    results["deobandi"] = banuri_results + fallback_results
+        elif firqa == "barelvi":
+            barelvi_results, status = search_google(query, FIRQA_SITES["barelvi"])
+            if status != 200:
+                return jsonify(barelvi_results), status
+            results["barelvi"] = barelvi_results
+            if isinstance(barelvi_results, list) and len(barelvi_results) < 2:
+                fallback_results2, fallback_status = search_google(query, FIRQA_SITES["barelvi_fallback"])
+                if fallback_status != 200:
+                    return jsonify(fallback_results2), fallback_status
+                if isinstance(fallback_results2, list):
+                    results["barelvi"] = barelvi_results + fallback_results2
+        else:  # ahlehadith
+            ahlehadith_results, status = search_google(query, FIRQA_SITES["ahlehadith"])
+            if status != 200:
+                return jsonify(ahlehadith_results), status
+            results[firqa] = ahlehadith_results
     else:
         combined_sites = " OR ".join([FIRQA_SITES["barelvi"], FIRQA_SITES["deobandi"], FIRQA_SITES["ahlehadith"]])
-        results["all"] = search_google(query, combined_sites)
+        all_results, status = search_google(query, combined_sites)
+        if status != 200:
+            return jsonify(all_results), status
+        results["all"] = all_results
     
     return jsonify(results), 200
 
