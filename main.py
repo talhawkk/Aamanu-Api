@@ -61,7 +61,8 @@ def search():
             return jsonify(firqa_results), status
         results[firqa] = firqa_results
     else:
-        combined_sites = " OR ".join(FIRQA_SITES.values())
+        # Prioritize Banuri first, then include other sites
+        combined_sites = f"{FIRQA_SITES['deobandi']} OR " + " OR ".join([FIRQA_SITES['barelvi'], FIRQA_SITES['ahlehadith']])
         all_results, status = search_google(query, combined_sites)
         if status != 200:
             return jsonify(all_results), status
