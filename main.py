@@ -55,19 +55,26 @@ def search():
         return jsonify({"error": "Invalid sect specified"}), 400
 
     results = {}
+    
     if firqa:
         firqa_results, status = search_google(query, FIRQA_SITES[firqa])
         if status != 200:
             return jsonify(firqa_results), status
         results[firqa] = firqa_results
     else:
-        # Prioritize Banuri first, then include other sites
-        combined_sites = f"{FIRQA_SITES['deobandi']} OR " + " OR ".join([FIRQA_SITES['barelvi'], FIRQA_SITES['ahlehadith']])
-        all_results, status = search_google(query, combined_sites)
+        # Step 1: Get results from Banuri (Deobandi) first
+        deobandi_results, status = search_google(query, FIRQA_SITES["deobandi"])
         if status != 200:
-            return jsonify(all_results), status
-        results["all"] = all_results
-    
+            return jsonify(deobandi_results), status
+        results["deobandi"] = deobandi_results  # First priority
+
+        # Step 2: Fetch results from other sects
+        combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']}"
+        other_results, status = search_google(query, combined_sites)
+        if status != 200:
+            return jsonify(other_results), status
+        results["others"] = other_results  # Other sects' results
+
     return jsonify(results), 200
 
 if __name__ == "__main__":
