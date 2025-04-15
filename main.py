@@ -16,23 +16,24 @@ SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 # Define websites for different sects
 FIRQA_SITES = {
     "barelvi": "site:thefatwa.com",
-    "deobandi": "site:banuri.edu.pk",  
+    "deobandi": "site:banuri.edu.pk",
     "ahlehadith": "site:ahlelhadith.com OR site:forum.mohaddis.com",
+    "hanbli": "site:islamqa.info/ur",  # Newly added
 }
 
 def search_google(query, firqa_sites="", start=1):
     """Search Google Custom Search API with pagination support."""
     if not API_KEY or not SEARCH_ENGINE_ID:
         return {"error": "API configuration is missing"}, 400
-    
+
     base_url = "https://www.googleapis.com/customsearch/v1"
     params = {
         "q": f"{query} {firqa_sites}" if firqa_sites else query,
         "key": API_KEY,
         "cx": SEARCH_ENGINE_ID,
-        "start": start,  # Pagination starting point
+        "start": start,
     }
-    
+
     try:
         response = requests.get(base_url, params=params)
         response.raise_for_status()
@@ -55,7 +56,7 @@ def search():
         return jsonify({"error": "Invalid sect specified"}), 400
 
     results = {}
-    
+
     if firqa:
         firqa_results, status = search_google(query, FIRQA_SITES[firqa])
         if status != 200:
@@ -69,7 +70,7 @@ def search():
         results["deobandi"] = deobandi_results  # First priority
 
         # Step 2: Fetch results from other sects
-        combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']}"
+        combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']} OR {FIRQA_SITES['hanbli']}"
         other_results, status = search_google(query, combined_sites)
         if status != 200:
             return jsonify(other_results), status
