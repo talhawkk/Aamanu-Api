@@ -18,7 +18,7 @@ FIRQA_SITES = {
     "barelvi": "site:thefatwa.com",
     "deobandi": "site:banuri.edu.pk",
     "ahlehadith": "site:ahlelhadith.com OR site:forum.mohaddis.com",
-    "hanbli": "site:islamqa.info/ur",  # Newly added
+    "hanbali": "site:islamqa.info/ur", 
 }
 
 def search_google(query, firqa_sites="", start=1):
