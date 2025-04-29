@@ -22,7 +22,7 @@ SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 # Track API key usage (in-memory, reset daily)
 api_key_usage = {key: {"count": 0, "last_reset": datetime.now()} for key in API_KEYS if key}
 current_api_key_index = 0
-REQUEST_LIMIT = 1000  # Daily limit per API key
+REQUEST_LIMIT = 2  # Daily limit per API key
 
 # Define websites for different sects
 FIRQA_SITES = {
