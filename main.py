@@ -30,7 +30,7 @@ if not SEARCH_ENGINE_ID:
 # Track API key usage (in-memory, reset daily)
 api_key_usage = {key: {"count": 0, "last_reset": datetime.now()} for key in API_KEYS}
 current_api_key_index = 0
-REQUEST_LIMIT = 2  # Daily limit per API key for testing (set to 1000 in production)
+REQUEST_LIMIT = 1000  # Daily limit per API key for testing (set to 1000 in production)
 
 # Log initial state
 logger.info(f"Loaded API keys: {len(API_KEYS)} keys {[key[:8] + '...' for key in API_KEYS]}")
