@@ -42,7 +42,7 @@ FIRQA_SITES = {
     "deobandi": "site:banuri.edu.pk",
     "ahlehadith": {
         "primary": "site:ahlelhadith.com",
-        "secondary": "site:forum.mohaddis.com"
+        # "secondary": "site:forum.mohaddis.com"
     }
 }
 
