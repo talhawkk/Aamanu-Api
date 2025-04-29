@@ -151,24 +151,23 @@ def search():
                 return jsonify(firqa_results), status
             results[firqa] = firqa_results
     else:
-        # Default behavior: Deobandi first, then others
-        deobandi_results, status = search_google(query, FIRQA_SITES["deobandi"])
-        if status != 200:
-            return jsonify(deobandi_results), status
-        results["deobandi"] = deobandi_results
-
-        # Combine barelvi and ahlehadith (try primary ahlehadith first, then secondary)
-        combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']['primary']}"
-        other_results, status = search_google(query, combined_sites)
-        if status == 200 and other_results:
-            results["others"] = other_results
-        else:
-            logger.warning(f"No results or error for {combined_sites}, trying {FIRQA_SITES['ahlehadith']['secondary']}")
-            combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']['secondary']}"
-            other_results, status = search_google(query, combined_sites)
-            if status != 200:
-                return jsonify(other_results), status
-            results["others"] = other_results
+        # No firqa selected: Search all independently
+        for sect, site_info in FIRQA_SITES.items():
+            if sect == "ahlehadith":
+                firqa_results, status = search_google(query, site_info["primary"])
+                if status == 200 and firqa_results:
+                    results[sect] = firqa_results
+                else:
+                    logger.warning(f"No results for {site_info['primary']}, trying {site_info['secondary']}")
+                    firqa_results, status = search_google(query, site_info["secondary"])
+                    if status != 200:
+                        return jsonify(firqa_results), status
+                    results[sect] = firqa_results
+            else:
+                firqa_results, status = search_google(query, site_info)
+                if status != 200:
+                    return jsonify(firqa_results), status
+                results[sect] = firqa_results
 
     return jsonify(results), 200
 
