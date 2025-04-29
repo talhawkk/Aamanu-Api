@@ -19,10 +19,22 @@ API_KEYS = [
 ]
 SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
+# Validate API keys and initialize usage tracking
+API_KEYS = [key for key in API_KEYS if key]  # Remove None or empty keys
+if not API_KEYS:
+    logger.error("No valid API keys provided")
+if not SEARCH_ENGINE_ID:
+    logger.error("Search Engine ID is missing")
+
 # Track API key usage (in-memory, reset daily)
-api_key_usage = {key: {"count": 0, "last_reset": datetime.now()} for key in API_KEYS if key}
+api_key_usage = {key: {"count": 0, "last_reset": datetime.now()} for key in API_KEYS}
 current_api_key_index = 0
-REQUEST_LIMIT = 2  # Daily limit per API key
+REQUEST_LIMIT = 2  # Daily limit per API key for testing (set to 1000 in production)
+
+# Log initial state
+logger.info(f"Loaded API keys: {len(API_KEYS)} keys")
+logger.info(f"Search Engine ID: {SEARCH_ENGINE_ID}")
+logger.info(f"Initial api_key_usage: {api_key_usage}")
 
 # Define websites for different sects
 FIRQA_SITES = {
@@ -39,21 +51,26 @@ def reset_usage_if_new_day():
         if now - api_key_usage[key]["last_reset"] >= timedelta(days=1):
             api_key_usage[key]["count"] = 0
             api_key_usage[key]["last_reset"] = now
+            logger.info(f"Reset usage for API key {key[:8]}...: count = 0")
 
 def get_next_api_key():
     """Get the next available API key with remaining quota."""
     global current_api_key_index
     reset_usage_if_new_day()
 
+    logger.info(f"Current API key index: {current_api_key_index}")
+    logger.info(f"Current api_key_usage: {api_key_usage}")
+
     for _ in range(len(API_KEYS)):
         key = API_KEYS[current_api_key_index]
-        if not key:
-            current_api_key_index = (current_api_key_index + 1) % len(API_KEYS)
-            continue
+        logger.info(f"Checking API key {key[:8]}... (index {current_api_key_index})")
         if api_key_usage[key]["count"] < REQUEST_LIMIT:
+            logger.info(f"Selected API key {key[:8]}... with {api_key_usage[key]['count']} requests used")
             return key
+        logger.info(f"API key {key[:8]}... has reached limit ({api_key_usage[key]['count']}/{REQUEST_LIMIT})")
         current_api_key_index = (current_api_key_index + 1) % len(API_KEYS)
     
+    logger.error("All API keys have reached their daily limit")
     return None  # All keys exhausted
 
 def search_google(query, firqa_sites="", start=1):
@@ -74,20 +91,23 @@ def search_google(query, firqa_sites="", start=1):
     }
     
     try:
+        logger.info(f"Making request with API key {api_key[:8]}... for query: {query}")
         response = requests.get(base_url, params=params)
         response.raise_for_status()
         api_key_usage[api_key]["count"] += 1  # Increment usage count
+        logger.info(f"Request successful, incremented count for {api_key[:8]}...: {api_key_usage[api_key]['count']}/{REQUEST_LIMIT}")
         data = response.json()
         return data.get("items", []), 200
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code in [403, 429]:  # Quota exceeded or rate limit
+        status_code = e.response.status_code
+        logger.error(f"HTTP error {status_code} with API key {api_key[:8]}...: {str(e)}")
+        if status_code in [403, 429]:  # Quota exceeded or rate limit
             api_key_usage[api_key]["count"] = REQUEST_LIMIT  # Mark as exhausted
-            logger.warning(f"API key {api_key} quota exceeded, switching to next key")
+            logger.warning(f"API key {api_key[:8]}... quota exceeded, switching to next key")
             return search_google(query, firqa_sites, start)  # Retry with next key
-        logger.error(f"Search failed: {str(e)}")
-        return {"error": str(e)}, 500
+        return {"error": f"HTTP error {status_code}: {str(e)}"}, 500
     except requests.exceptions.RequestException as e:
-        logger.error(f"Search failed: {str(e)}")
+        logger.error(f"Request failed with API key {api_key[:8]}...: {str(e)}")
         return {"error": str(e)}, 500
 
 @app.route("/search", methods=["GET"])
