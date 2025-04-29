@@ -19,12 +19,13 @@ API_KEYS = [
 ]
 SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
-# Validate API keys and initialize usage tracking
-API_KEYS = [key for key in API_KEYS if key]  # Remove None or empty keys
+# Filter out None or empty keys and validate
+API_KEYS = [key for key in API_KEYS if key and isinstance(key, str) and key.strip()]
 if not API_KEYS:
-    logger.error("No valid API keys provided")
+    logger.error("No valid API keys provided. Check environment variables.")
+    API_KEYS = []  # Ensure API_KEYS is a list even if empty
 if not SEARCH_ENGINE_ID:
-    logger.error("Search Engine ID is missing")
+    logger.error("Search Engine ID is missing. Check SEARCH_ENGINE_ID environment variable.")
 
 # Track API key usage (in-memory, reset daily)
 api_key_usage = {key: {"count": 0, "last_reset": datetime.now()} for key in API_KEYS}
@@ -32,7 +33,7 @@ current_api_key_index = 0
 REQUEST_LIMIT = 2  # Daily limit per API key for testing (set to 1000 in production)
 
 # Log initial state
-logger.info(f"Loaded API keys: {len(API_KEYS)} keys")
+logger.info(f"Loaded API keys: {len(API_KEYS)} keys {[key[:8] + '...' for key in API_KEYS]}")
 logger.info(f"Search Engine ID: {SEARCH_ENGINE_ID}")
 logger.info(f"Initial api_key_usage: {api_key_usage}")
 
@@ -56,22 +57,29 @@ def reset_usage_if_new_day():
 def get_next_api_key():
     """Get the next available API key with remaining quota."""
     global current_api_key_index
-    reset_usage_if_new_day()
+    if not API_KEYS:
+        logger.error("No API keys available")
+        return None
 
+    reset_usage_if_new_day()
     logger.info(f"Current API key index: {current_api_key_index}")
     logger.info(f"Current api_key_usage: {api_key_usage}")
 
+    start_index = current_api_key_index
     for _ in range(len(API_KEYS)):
         key = API_KEYS[current_api_key_index]
-        logger.info(f"Checking API key {key[:8]}... (index {current_api_key_index})")
+        logger.info(f"Checking API key {key[:8]}... (index {current_api_key_index}, count {api_key_usage[key]['count']}/{REQUEST_LIMIT})")
         if api_key_usage[key]["count"] < REQUEST_LIMIT:
             logger.info(f"Selected API key {key[:8]}... with {api_key_usage[key]['count']} requests used")
             return key
         logger.info(f"API key {key[:8]}... has reached limit ({api_key_usage[key]['count']}/{REQUEST_LIMIT})")
         current_api_key_index = (current_api_key_index + 1) % len(API_KEYS)
+        if current_api_key_index == start_index:
+            logger.error("All API keys have reached their daily limit")
+            return None
     
-    logger.error("All API keys have reached their daily limit")
-    return None  # All keys exhausted
+    logger.error("No available API keys after checking all")
+    return None
 
 def search_google(query, firqa_sites="", start=1):
     """Search Google Custom Search API with pagination support."""
@@ -94,18 +102,19 @@ def search_google(query, firqa_sites="", start=1):
         logger.info(f"Making request with API key {api_key[:8]}... for query: {query}")
         response = requests.get(base_url, params=params)
         response.raise_for_status()
-        api_key_usage[api_key]["count"] += 1  # Increment usage count
+        api_key_usage[api_key]["count"] += 1
         logger.info(f"Request successful, incremented count for {api_key[:8]}...: {api_key_usage[api_key]['count']}/{REQUEST_LIMIT}")
         data = response.json()
         return data.get("items", []), 200
     except requests.exceptions.HTTPError as e:
         status_code = e.response.status_code
-        logger.error(f"HTTP error {status_code} with API key {api_key[:8]}...: {str(e)}")
-        if status_code in [403, 429]:  # Quota exceeded or rate limit
-            api_key_usage[api_key]["count"] = REQUEST_LIMIT  # Mark as exhausted
+        error_message = e.response.text
+        logger.error(f"HTTP error {status_code} with API key {api_key[:8]}...: {error_message}")
+        if status_code in [403, 429]:
+            api_key_usage[api_key]["count"] = REQUEST_LIMIT
             logger.warning(f"API key {api_key[:8]}... quota exceeded, switching to next key")
-            return search_google(query, firqa_sites, start)  # Retry with next key
-        return {"error": f"HTTP error {status_code}: {str(e)}"}, 500
+            return search_google(query, firqa_sites, start)
+        return {"error": f"HTTP error {status_code}: {error_message}"}, status_code
     except requests.exceptions.RequestException as e:
         logger.error(f"Request failed with API key {api_key[:8]}...: {str(e)}")
         return {"error": str(e)}, 500
@@ -130,13 +139,11 @@ def search():
             return jsonify(firqa_results), status
         results[firqa] = firqa_results
     else:
-        # Step 1: Get results from Banuri (Deobandi) first
         deobandi_results, status = search_google(query, FIRQA_SITES["deobandi"])
         if status != 200:
             return jsonify(deobandi_results), status
         results["deobandi"] = deobandi_results
 
-        # Step 2: Fetch results from other sects
         combined_sites = f"{FIRQA_SITES['barelvi']} OR {FIRQA_SITES['ahlehadith']}"
         other_results, status = search_google(query, combined_sites)
         if status != 200:
